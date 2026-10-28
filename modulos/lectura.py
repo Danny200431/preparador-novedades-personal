@@ -1,74 +1,93 @@
-# Importamos las herramientas para leer archivos JSON
-import json
-import os
 
-# Importamos los errores propios del proyecto
+# Este archivo busca y lee las novedades del archivo JSON.
+
+import json
+import re
+from pathlib import Path
 from modulos.excepciones import ErrorArchivoEntrada
 
 
-def leer_novedades():
-    # Indicamos la carpeta donde están los archivos JSON
-    carpeta = "entrada"
+# Buscamos la carpeta principal del proyecto.
+CARPETA_PROYECTO = Path(__file__).resolve().parent.parent
 
-    # Buscamos los archivos que terminan en .json
-    if not os.path.isdir(carpeta):
+
+def leer_novedades():
+    # Buscamos la carpeta donde están los archivos JSON.
+    carpeta = CARPETA_PROYECTO / "entrada"
+
+    if not carpeta.is_dir():
         raise ErrorArchivoEntrada(
             "No existe la carpeta de entrada."
         )
 
+    # Buscamos los archivos que terminan en .json.
     archivos = [
-        nombre
-        for nombre in os.listdir(carpeta)
-        if nombre.lower().endswith(".json")
-        and os.path.isfile(os.path.join(carpeta, nombre))
+        archivo
+        for archivo in carpeta.iterdir()
+        if archivo.is_file() and archivo.suffix.lower() == ".json"
     ]
 
-    # Verificamos que exista al menos un archivo JSON
     if not archivos:
         raise ErrorArchivoEntrada(
             "No se encontró ningún archivo JSON en la carpeta entrada."
         )
 
-    # Elegimos el archivo JSON modificado más recientemente
-    nombre_reciente = max(
-        archivos,
-        key=lambda nombre: os.path.getmtime(
-            os.path.join(carpeta, nombre)
+    # Buscamos la fecha que aparece en el nombre del archivo.
+    def obtener_fecha(archivo):
+        coincidencia = re.search(
+            r"(\d{4})-(\d{2})-(\d{2})",
+            archivo.name
         )
+
+        if coincidencia:
+            return tuple(map(int, coincidencia.groups()))
+
+        # Si no tiene fecha, queda por debajo de los archivos con fecha.
+        return (0, 0, 0)
+
+    archivos_con_fecha = [
+        archivo for archivo in archivos
+        if obtener_fecha(archivo) != (0, 0, 0)
+    ]
+
+    if not archivos_con_fecha:
+        raise ErrorArchivoEntrada(
+            "Los archivos JSON deben tener una fecha en el nombre, "
+            "por ejemplo: novedades_2026-10-23.json."
+        )
+
+    # Elegimos el archivo que tiene la fecha más reciente en el nombre.
+    nombre_reciente = max(
+        archivos_con_fecha,
+        key=lambda archivo: obtener_fecha(archivo)
     )
 
-    # Guardamos la ruta del archivo seleccionado
-    ruta_archivo = os.path.join(carpeta, nombre_reciente)
-
     try:
-        # Abrimos el archivo y leemos su contenido
-        with open(ruta_archivo, "r", encoding="utf-8") as archivo:
+        # Abrimos el archivo y leemos su contenido.
+        with nombre_reciente.open("r", encoding="utf-8") as archivo:
             datos = json.load(archivo)
 
     except (json.JSONDecodeError, OSError) as error:
-        # Avisamos si el archivo está dañado o no se puede leer
         raise ErrorArchivoEntrada(
-            f"No se pudo leer el archivo {nombre_reciente}: {error}"
+            f"No se pudo leer el archivo {nombre_reciente.name}: {error}"
         ) from error
 
-    # Comprobamos que el contenido sea un objeto
+    # Comprobamos que el contenido sea un objeto.
     if not isinstance(datos, dict):
         raise ErrorArchivoEntrada(
             "El contenido del JSON debe ser un objeto."
         )
 
-    # Obtenemos la lista de novedades
+    # Obtenemos la lista de novedades.
     novedades = datos.get("novedades")
 
-    # Verificamos que novedades sea una lista
     if not isinstance(novedades, list):
         raise ErrorArchivoEntrada(
             "El archivo JSON debe contener una lista llamada novedades."
         )
 
-    # Mostramos el nombre del archivo procesado
-    print("Archivo procesado:", nombre_reciente)
-    leer_novedades.archivo_procesado = nombre_reciente
+    # Guardamos el nombre del archivo que se leyó.
+    print("Archivo procesado:", nombre_reciente.name)
+    leer_novedades.archivo_procesado = nombre_reciente.name
 
-    # Devolvemos la lista de novedades
     return novedades
